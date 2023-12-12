@@ -132,6 +132,10 @@ export interface Commands {
     params: Bidi.Session.SubscriptionRequest;
     returnType: Bidi.EmptyResult;
   };
+  'storage.getCookies': {
+    params: Bidi.Storage.GetCookiesParameters;
+    returnType: Bidi.Storage.GetCookiesResult;
+  };
   'cdp.sendCommand': {
     params: Bidi.Cdp.SendCommandParameters;
     returnType: Bidi.Cdp.SendCommandResult;
