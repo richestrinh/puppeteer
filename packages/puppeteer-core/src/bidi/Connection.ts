@@ -136,6 +136,10 @@ export interface Commands {
     params: Bidi.Storage.GetCookiesParameters;
     returnType: Bidi.Storage.GetCookiesResult;
   };
+  'storage.setCookie': {
+    params: Bidi.Storage.SetCookieParameters;
+    returnType: Bidi.Storage.SetCookieResult;
+  };
   'cdp.sendCommand': {
     params: Bidi.Cdp.SendCommandParameters;
     returnType: Bidi.Cdp.SendCommandResult;

@@ -3690,6 +3690,30 @@
     "expectations": ["FAIL"]
   },
   {
+    "testIdPattern": "[cookies.spec] Cookie specs Page.setCookie should default to setting secure cookie for HTTPS websites",
+    "platforms": ["darwin"],
+    "parameters": ["chrome", "headless", "webDriverBiDi"],
+    "expectations": ["PASS"]
+  },
+  {
+    "testIdPattern": "[cookies.spec] Cookie specs Page.setCookie should have |expires| set to |-1| for session cookies",
+    "platforms": ["darwin"],
+    "parameters": ["chrome", "headless", "webDriverBiDi"],
+    "expectations": ["PASS"]
+  },
+  {
+    "testIdPattern": "[cookies.spec] Cookie specs Page.setCookie should set multiple cookies",
+    "platforms": ["darwin"],
+    "parameters": ["chrome", "headless", "webDriverBiDi"],
+    "expectations": ["PASS"]
+  },
+  {
+    "testIdPattern": "[cookies.spec] Cookie specs Page.setCookie should work",
+    "platforms": ["darwin"],
+    "parameters": ["chrome", "headless", "webDriverBiDi"],
+    "expectations": ["PASS"]
+  },
+  {
     "testIdPattern": "[emulation.spec] Emulation Page.emulateVisionDeficiency should work",
     "platforms": ["darwin", "linux", "win32"],
     "parameters": ["cdp", "chrome", "new-headless"],
