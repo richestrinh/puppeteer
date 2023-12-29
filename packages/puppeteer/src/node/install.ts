@@ -60,8 +60,7 @@ export async function downloadBrowser(): Promise<void> {
     configuration.browserRevision || PUPPETEER_REVISIONS[product] || 'latest';
 
   const buildId = await resolveBuildId(browser, platform, unresolvedBuildId);
-  // TODO: deprecate downloadPath in favour of cacheDirectory.
-  const cacheDir = configuration.downloadPath ?? configuration.cacheDirectory!;
+  const cacheDir = configuration.cacheDirectory!;
 
   try {
     const result = await install({
