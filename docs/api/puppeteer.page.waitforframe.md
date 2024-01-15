@@ -11,7 +11,7 @@ Waits for a frame matching the given conditions to appear.
 ```typescript
 class Page {
   waitForFrame(
-    urlOrPredicate: string | ((frame: Frame) => Awaitable<boolean>),
+    urlOrPredicate: string | AwaitablePredicate<Frame>,
     options?: WaitTimeoutOptions
   ): Promise<Frame>;
 }
@@ -19,10 +19,10 @@ class Page {
 
 ## Parameters
 
-| Parameter      | Type                                                                                                          | Description  |
-| -------------- | ------------------------------------------------------------------------------------------------------------- | ------------ |
-| urlOrPredicate | string \| ((frame: [Frame](./puppeteer.frame.md)) =&gt; [Awaitable](./puppeteer.awaitable.md)&lt;boolean&gt;) |              |
-| options        | [WaitTimeoutOptions](./puppeteer.waittimeoutoptions.md)                                                       | _(Optional)_ |
+| Parameter      | Type                                                                                                   | Description  |
+| -------------- | ------------------------------------------------------------------------------------------------------ | ------------ |
+| urlOrPredicate | string \| [AwaitablePredicate](./puppeteer.awaitablepredicate.md)&lt;[Frame](./puppeteer.frame.md)&gt; |              |
+| options        | [WaitTimeoutOptions](./puppeteer.waittimeoutoptions.md)                                                | _(Optional)_ |
 
 **Returns:**
 

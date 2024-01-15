@@ -334,11 +334,10 @@ export abstract class ProductLauncher {
     const bidiConnection = await BiDi.connectBidiOverCdp(connection, {
       acceptInsecureCerts: opts.ignoreHTTPSErrors ?? false,
     });
-    return await BiDi.BidiBrowser.create({
-      connection: bidiConnection,
+    return await BiDi.BidiBrowser.from(bidiConnection, {
       closeCallback,
       process: browserProcess.nodeProcess,
-      defaultViewport: opts.defaultViewport,
+      defaultViewport: opts.defaultViewport ?? undefined,
       ignoreHTTPSErrors: opts.ignoreHTTPSErrors,
     });
   }
@@ -371,11 +370,10 @@ export abstract class ProductLauncher {
       opts.protocolTimeout
     );
     // TODO: use other options too.
-    return await BiDi.BidiBrowser.create({
-      connection: bidiConnection,
+    return await BiDi.BidiBrowser.from(bidiConnection, {
       closeCallback,
       process: browserProcess.nodeProcess,
-      defaultViewport: opts.defaultViewport,
+      defaultViewport: opts.defaultViewport ?? undefined,
       ignoreHTTPSErrors: opts.ignoreHTTPSErrors,
     });
   }

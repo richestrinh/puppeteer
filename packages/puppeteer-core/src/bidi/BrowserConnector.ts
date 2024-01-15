@@ -39,11 +39,10 @@ export async function _connectToBiDiBrowser(
     options
   );
   const BiDi = await import(/* webpackIgnore: true */ './bidi.js');
-  const bidiBrowser = await BiDi.BidiBrowser.create({
-    connection: bidiConnection,
+  const bidiBrowser = await BiDi.BidiBrowser.from(bidiConnection, {
     closeCallback,
     process: undefined,
-    defaultViewport: defaultViewport,
+    defaultViewport: defaultViewport ?? undefined,
     ignoreHTTPSErrors: ignoreHTTPSErrors,
   });
   return bidiBrowser;

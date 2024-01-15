@@ -39,8 +39,8 @@ import type {CDPSession} from './CDPSession.js';
 import type {KeyboardTypeOptions} from './Input.js';
 import {
   FunctionLocator,
-  type Locator,
   NodeLocator,
+  type Locator,
 } from './locators/locators.js';
 import type {Realm} from './Realm.js';
 
@@ -189,6 +189,7 @@ export interface FrameEvents extends Record<EventType, unknown> {
  */
 // eslint-disable-next-line @typescript-eslint/no-namespace
 export namespace FrameEvent {
+  // Only used in CDP.
   export const FrameNavigated = Symbol('Frame.FrameNavigated');
   export const FrameSwapped = Symbol('Frame.FrameSwapped');
   export const LifecycleEvent = Symbol('Frame.LifecycleEvent');
@@ -265,7 +266,7 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
   /**
    * @internal
    */
-  _id!: string;
+  abstract _id: string;
   /**
    * @internal
    */
@@ -798,7 +799,7 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
    * @internal
    */
   async setFrameContent(content: string): Promise<void> {
-    return await this.evaluate(html => {
+    return await this.mainRealm().evaluate(html => {
       document.open();
       document.write(html);
       document.close();

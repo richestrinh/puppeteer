@@ -87,6 +87,7 @@ export abstract class Realm implements Disposable {
     return await waitTask.result;
   }
 
+  // Used for ARIA query selectors.
   abstract adoptBackendNode(backendNodeId?: number): Promise<JSHandle<Node>>;
 
   get disposed(): boolean {

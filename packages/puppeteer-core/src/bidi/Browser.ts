@@ -6,8 +6,6 @@
 
 import type {ChildProcess} from 'child_process';
 
-import type * as Bidi from 'chromium-bidi/lib/cjs/protocol/protocol.js';
-
 import {
   Browser,
   BrowserEvent,
@@ -18,28 +16,21 @@ import {BrowserContextEvent} from '../api/BrowserContext.js';
 import type {Page} from '../api/Page.js';
 import type {Target} from '../api/Target.js';
 import {UnsupportedOperation} from '../common/Errors.js';
-import type {Handler} from '../common/EventEmitter.js';
-import {debugError} from '../common/util.js';
 import type {Viewport} from '../common/Viewport.js';
 
 import {BidiBrowserContext} from './BrowserContext.js';
-import {BrowsingContext, BrowsingContextEvent} from './BrowsingContext.js';
-import type {BidiConnection} from './Connection.js';
-import {
-  BiDiBrowserTarget,
-  BiDiBrowsingContextTarget,
-  BiDiPageTarget,
-  type BidiTarget,
-} from './Target.js';
+import type {Connection} from './core/Connection.js';
+import {Session} from './core/Session.js';
+import type {UserContext} from './core/UserContext.js';
+import {BidiBrowserTarget} from './Target.js';
 
 /**
  * @internal
  */
 export interface BidiBrowserOptions {
-  process?: ChildProcess;
   closeCallback?: BrowserCloseCallback;
-  connection: BidiConnection;
-  defaultViewport: Viewport | null;
+  defaultViewport?: Viewport;
+  process?: ChildProcess;
   ignoreHTTPSErrors?: boolean;
 }
 
@@ -49,112 +40,92 @@ export interface BidiBrowserOptions {
 export class BidiBrowser extends Browser {
   readonly protocol = 'webDriverBiDi';
 
-  // TODO: Update generator to include fully module
-  static readonly subscribeModules: string[] = [
-    'browsingContext',
-    'network',
-    'log',
-    'script',
-  ];
-  static readonly subscribeCdpEvents: Bidi.Cdp.EventNames[] = [
-    // Coverage
-    'cdp.Debugger.scriptParsed',
-    'cdp.CSS.styleSheetAdded',
-    'cdp.Runtime.executionContextsCleared',
-    // Tracing
-    'cdp.Tracing.tracingComplete',
-    // TODO: subscribe to all CDP events in the future.
-    'cdp.Network.requestWillBeSent',
-    'cdp.Debugger.scriptParsed',
-    'cdp.Page.screencastFrame',
-  ];
+  static async from(
+    connection: Connection,
+    options: BidiBrowserOptions
+  ): Promise<BidiBrowser> {
+    const {ignoreHTTPSErrors} = options;
 
-  static async create(opts: BidiBrowserOptions): Promise<BidiBrowser> {
-    let browserName = '';
-    let browserVersion = '';
-
-    // TODO: await until the connection is established.
-    try {
-      const {result} = await opts.connection.send('session.new', {
-        capabilities: {
-          alwaysMatch: {
-            acceptInsecureCerts: opts.ignoreHTTPSErrors,
-          },
-        },
-      });
-      browserName = result.capabilities.browserName ?? '';
-      browserVersion = result.capabilities.browserVersion ?? '';
-    } catch (err) {
-      // Chrome does not support session.new.
-      debugError(err);
-    }
-
-    await opts.connection.send('session.subscribe', {
-      events: browserName.toLocaleLowerCase().includes('firefox')
-        ? BidiBrowser.subscribeModules
-        : [...BidiBrowser.subscribeModules, ...BidiBrowser.subscribeCdpEvents],
+    const session = await Session.from(connection, {
+      alwaysMatch: {
+        acceptInsecureCerts: ignoreHTTPSErrors,
+        webSocketUrl: true,
+      },
     });
 
-    const browser = new BidiBrowser({
-      ...opts,
-      browserName,
-      browserVersion,
-    });
-
-    await browser.#getTree();
-
+    const browser = new BidiBrowser(session);
+    browser.#initialize();
     return browser;
   }
 
-  #browserName = '';
-  #browserVersion = '';
-  #process?: ChildProcess;
-  #closeCallback?: BrowserCloseCallback;
-  #connection: BidiConnection;
-  #defaultViewport: Viewport | null;
-  #defaultContext: BidiBrowserContext;
-  #targets = new Map<string, BidiTarget>();
-  #contexts: BidiBrowserContext[] = [];
-  #browserTarget: BiDiBrowserTarget;
+  // keep-sorted start
+  readonly #browserContexts = new WeakMap<UserContext, BidiBrowserContext>();
+  readonly #closeCallback?: BrowserCloseCallback;
+  readonly #defaultViewport?: Viewport;
+  readonly #process?: ChildProcess;
+  readonly #target: Target;
+  readonly session: Session;
+  // keep-sorted end
 
-  #connectionEventHandlers = new Map<
-    Bidi.BrowsingContextEvent['method'],
-    Handler<any>
-  >([
-    ['browsingContext.contextCreated', this.#onContextCreated.bind(this)],
-    ['browsingContext.contextDestroyed', this.#onContextDestroyed.bind(this)],
-    ['browsingContext.domContentLoaded', this.#onContextDomLoaded.bind(this)],
-    ['browsingContext.fragmentNavigated', this.#onContextNavigation.bind(this)],
-    ['browsingContext.navigationStarted', this.#onContextNavigation.bind(this)],
-  ]);
-
-  constructor(
-    opts: BidiBrowserOptions & {
-      browserName: string;
-      browserVersion: string;
-    }
+  private constructor(
+    session: Session,
+    closeCallback?: BrowserCloseCallback,
+    defaultViewport?: Viewport,
+    process?: ChildProcess
   ) {
     super();
-    this.#process = opts.process;
-    this.#closeCallback = opts.closeCallback;
-    this.#connection = opts.connection;
-    this.#defaultViewport = opts.defaultViewport;
-    this.#browserName = opts.browserName;
-    this.#browserVersion = opts.browserVersion;
 
-    this.#process?.once('close', () => {
-      this.#connection.dispose();
+    // keep-sorted start
+    this.session = session;
+    this.#process = process;
+    this.#closeCallback = closeCallback;
+    this.#defaultViewport = defaultViewport;
+    // keep-sorted end
+
+    this.#target = new BidiBrowserTarget(this);
+  }
+
+  get #browser() {
+    return this.session.browser;
+  }
+
+  get #browserName() {
+    return this.session.capabilities.browserName;
+  }
+
+  get #browserVersion() {
+    return this.session.capabilities.browserVersion;
+  }
+
+  get cdpSupported(): boolean {
+    return !this.#browserName.toLowerCase().includes('firefox');
+  }
+
+  #initialize() {
+    this.#browser.once('closed', () => {
+      void this.#closeCallback?.call(null);
+    });
+    this.#browser.once('disconnected', () => {
       this.emit(BrowserEvent.Disconnected, undefined);
+      this.removeAllListeners();
     });
-    this.#defaultContext = new BidiBrowserContext(this, {
-      defaultViewport: this.#defaultViewport,
-      isDefault: true,
-    });
-    this.#browserTarget = new BiDiBrowserTarget(this.#defaultContext);
-    this.#contexts.push(this.#defaultContext);
 
-    for (const [eventName, handler] of this.#connectionEventHandlers) {
-      this.#connection.on(eventName, handler);
+    // Initializing existing contexts.
+    for (const userContext of this.#browser.userContexts) {
+      const browserContext = BidiBrowserContext.from(userContext, this, {
+        defaultViewport: this.#defaultViewport ?? null,
+      });
+      browserContext.on(BrowserContextEvent.TargetCreated, target => {
+        this.emit(BrowserEvent.TargetCreated, target);
+      });
+      browserContext.on(BrowserContextEvent.TargetChanged, target => {
+        this.emit(BrowserEvent.TargetChanged, target);
+      });
+      browserContext.on(BrowserContextEvent.TargetDestroyed, target => {
+        this.emit(BrowserEvent.TargetDestroyed, target);
+      });
+
+      this.#browserContexts.set(userContext, browserContext);
     }
   }
 
@@ -162,96 +133,17 @@ export class BidiBrowser extends Browser {
     throw new UnsupportedOperation();
   }
 
-  #onContextDomLoaded(event: Bidi.BrowsingContext.Info) {
-    const target = this.#targets.get(event.context);
-    if (target) {
-      this.emit(BrowserEvent.TargetChanged, target);
-    }
-  }
-
-  #onContextNavigation(event: Bidi.BrowsingContext.NavigationInfo) {
-    const target = this.#targets.get(event.context);
-    if (target) {
-      this.emit(BrowserEvent.TargetChanged, target);
-      target.browserContext().emit(BrowserContextEvent.TargetChanged, target);
-    }
-  }
-
-  #onContextCreated(event: Bidi.BrowsingContext.ContextCreated['params']) {
-    const context = new BrowsingContext(
-      this.#connection,
-      event,
-      this.#browserName
-    );
-    this.#connection.registerBrowsingContexts(context);
-    // TODO: once more browsing context types are supported, this should be
-    // updated to support those. Currently, all top-level contexts are treated
-    // as pages.
-    const browserContext = this.browserContexts().at(-1);
-    if (!browserContext) {
-      throw new Error('Missing browser contexts');
-    }
-    const target = !context.parent
-      ? new BiDiPageTarget(browserContext, context)
-      : new BiDiBrowsingContextTarget(browserContext, context);
-    this.#targets.set(event.context, target);
-
-    this.emit(BrowserEvent.TargetCreated, target);
-    target.browserContext().emit(BrowserContextEvent.TargetCreated, target);
-
-    if (context.parent) {
-      const topLevel = this.#connection.getTopLevelContext(context.parent);
-      topLevel.emit(BrowsingContextEvent.Created, context);
-    }
-  }
-
-  async #getTree(): Promise<void> {
-    const {result} = await this.#connection.send('browsingContext.getTree', {});
-    for (const context of result.contexts) {
-      this.#onContextCreated(context);
-    }
-  }
-
-  async #onContextDestroyed(
-    event: Bidi.BrowsingContext.ContextDestroyed['params']
-  ) {
-    const context = this.#connection.getBrowsingContext(event.context);
-    const topLevelContext = this.#connection.getTopLevelContext(event.context);
-    topLevelContext.emit(BrowsingContextEvent.Destroyed, context);
-    const target = this.#targets.get(event.context);
-    const page = await target?.page();
-    await page?.close().catch(debugError);
-    this.#targets.delete(event.context);
-    if (target) {
-      this.emit(BrowserEvent.TargetDestroyed, target);
-      target.browserContext().emit(BrowserContextEvent.TargetDestroyed, target);
-    }
-  }
-
-  get connection(): BidiConnection {
-    return this.#connection;
-  }
-
   override wsEndpoint(): string {
-    return this.#connection.url;
+    // SAFETY: `webSocketUrl` is true in `Session.create`.
+    return this.session.capabilities.webSocketUrl as string;
   }
 
   override async close(): Promise<void> {
-    for (const [eventName, handler] of this.#connectionEventHandlers) {
-      this.#connection.off(eventName, handler);
-    }
-    if (this.#connection.closed) {
-      return;
-    }
-
-    // `browser.close` can close connection before the response is received.
-    await this.#connection.send('browser.close', {}).catch(debugError);
-    await this.#closeCallback?.call(null);
-    this.#connection.dispose();
+    await this.#browser.close();
   }
 
   override get connected(): boolean {
-    return !this.#connection.closed;
+    return !this.#browser.disposed;
   }
 
   override process(): ChildProcess | null {
@@ -262,12 +154,7 @@ export class BidiBrowser extends Browser {
     _options?: BrowserContextOptions
   ): Promise<BidiBrowserContext> {
     // TODO: implement incognito context https://github.com/w3c/webdriver-bidi/issues/289.
-    const context = new BidiBrowserContext(this, {
-      defaultViewport: this.#defaultViewport,
-      isDefault: false,
-    });
-    this.#contexts.push(context);
-    return context;
+    return this.defaultBrowserContext();
   }
 
   override async version(): Promise<string> {
@@ -275,53 +162,35 @@ export class BidiBrowser extends Browser {
   }
 
   override browserContexts(): BidiBrowserContext[] {
-    // TODO: implement incognito context https://github.com/w3c/webdriver-bidi/issues/289.
-    return this.#contexts;
-  }
-
-  async _closeContext(browserContext: BidiBrowserContext): Promise<void> {
-    this.#contexts = this.#contexts.filter(c => {
-      return c !== browserContext;
+    return [...this.#browser.userContexts].map(context => {
+      // SAFETY: We are using `context`.
+      return this.#browserContexts.get(context)!;
     });
-    for (const target of browserContext.targets()) {
-      const page = await target?.page();
-      await page?.close().catch(error => {
-        debugError(error);
-      });
-    }
   }
 
   override defaultBrowserContext(): BidiBrowserContext {
-    return this.#defaultContext;
+    // SAFETY: We initialized the browser beforehand.
+    return this.#browserContexts.get(this.#browser.defaultUserContext)!;
   }
 
-  override newPage(): Promise<Page> {
-    return this.#defaultContext.newPage();
+  override async newPage(): Promise<Page> {
+    return await this.defaultBrowserContext().newPage();
   }
 
   override targets(): Target[] {
-    return [this.#browserTarget, ...Array.from(this.#targets.values())];
-  }
-
-  _getTargetById(id: string): BidiTarget {
-    const target = this.#targets.get(id);
-    if (!target) {
-      throw new Error('Target not found');
-    }
-    return target;
+    return [
+      this.target(),
+      ...this.browserContexts().flatMap(context => {
+        return context.targets();
+      }),
+    ];
   }
 
   override target(): Target {
-    return this.#browserTarget;
+    return this.#target;
   }
 
   override async disconnect(): Promise<void> {
-    try {
-      // Fail silently if the session cannot be ended.
-      await this.#connection.send('session.end', {});
-    } catch (e) {
-      debugError(e);
-    }
-    this.#connection.dispose();
+    await this.session.end();
   }
 }

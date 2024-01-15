@@ -25,7 +25,6 @@ import {
 } from '../../third_party/rxjs/rxjs.js';
 import type {HTTPRequest} from '../api/HTTPRequest.js';
 import type {HTTPResponse} from '../api/HTTPResponse.js';
-import type {BidiNetworkManager} from '../bidi/NetworkManager.js';
 import type {Accessibility} from '../cdp/Accessibility.js';
 import type {Coverage} from '../cdp/Coverage.js';
 import type {DeviceRequestPrompt} from '../cdp/DeviceRequestPrompt.js';
@@ -105,6 +104,11 @@ import {
 } from './locators/locators.js';
 import type {Target} from './Target.js';
 import type {WebWorker} from './WebWorker.js';
+
+/**
+ * @public
+ */
+export type AwaitablePredicate<T> = (value: T) => Awaitable<boolean>;
 
 /**
  * @public
@@ -1621,8 +1625,8 @@ export abstract class Page extends EventEmitter<PageEvents> {
    *   {@link Page.setDefaultTimeout} method.
    */
   abstract waitForRequest(
-    urlOrPredicate: string | ((req: HTTPRequest) => boolean | Promise<boolean>),
-    options?: {timeout?: number}
+    urlOrPredicate: string | AwaitablePredicate<HTTPRequest>,
+    options?: WaitTimeoutOptions
   ): Promise<HTTPRequest>;
 
   /**
@@ -1653,10 +1657,8 @@ export abstract class Page extends EventEmitter<PageEvents> {
    *   the {@link Page.setDefaultTimeout} method.
    */
   abstract waitForResponse(
-    urlOrPredicate:
-      | string
-      | ((res: HTTPResponse) => boolean | Promise<boolean>),
-    options?: {timeout?: number}
+    urlOrPredicate: string | AwaitablePredicate<HTTPResponse>,
+    options?: WaitTimeoutOptions
   ): Promise<HTTPResponse>;
 
   /**
@@ -1672,7 +1674,7 @@ export abstract class Page extends EventEmitter<PageEvents> {
    * @internal
    */
   _waitForNetworkIdle(
-    networkManager: BidiNetworkManager | CdpNetworkManager,
+    networkManager: CdpNetworkManager,
     idleTime: number,
     requestsInFlight = 0
   ): Observable<void> {
@@ -1703,7 +1705,7 @@ export abstract class Page extends EventEmitter<PageEvents> {
    * ```
    */
   async waitForFrame(
-    urlOrPredicate: string | ((frame: Frame) => Awaitable<boolean>),
+    urlOrPredicate: string | AwaitablePredicate<Frame>,
     options: WaitTimeoutOptions = {}
   ): Promise<Frame> {
     const {timeout: ms = this.getDefaultTimeout()} = options;
@@ -2164,22 +2166,6 @@ export abstract class Page extends EventEmitter<PageEvents> {
   abstract setCacheEnabled(enabled?: boolean): Promise<void>;
 
   /**
-   * @internal
-   */
-  async _maybeWriteBufferToFile(
-    path: string | undefined,
-    buffer: Buffer
-  ): Promise<void> {
-    if (!path) {
-      return;
-    }
-
-    const fs = await importFSPromises();
-
-    await fs.writeFile(path, buffer);
-  }
-
-  /**
    * Captures a screencast of this {@link Page | page}.
    *
    * @example
@@ -2473,8 +2459,12 @@ export abstract class Page extends EventEmitter<PageEvents> {
     if (options.encoding === 'base64') {
       return data;
     }
+
     const buffer = Buffer.from(data, 'base64');
-    await this._maybeWriteBufferToFile(options.path, buffer);
+    if (options.path) {
+      const fs = await importFSPromises();
+      await fs.writeFile(options.path, buffer);
+    }
     return buffer;
   }
 

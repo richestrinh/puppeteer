@@ -12,29 +12,28 @@ import {UnsupportedOperation} from '../common/Errors.js';
 
 import {BidiDeserializer} from './Deserializer.js';
 import type {BidiRealm} from './Realm.js';
-import type {Sandbox} from './Sandbox.js';
-import {releaseReference} from './util.js';
 
 /**
  * @internal
  */
 export class BidiJSHandle<T = unknown> extends JSHandle<T> {
+  static create<T>(
+    value: Bidi.Script.RemoteValue,
+    realm: BidiRealm
+  ): BidiJSHandle<T> {
+    return new BidiJSHandle(value, realm);
+  }
+
+  readonly #value: Bidi.Script.RemoteValue;
+
+  override readonly realm: BidiRealm;
+
   #disposed = false;
-  readonly #sandbox: Sandbox;
-  readonly #remoteValue: Bidi.Script.RemoteValue;
 
-  constructor(sandbox: Sandbox, remoteValue: Bidi.Script.RemoteValue) {
+  constructor(value: Bidi.Script.RemoteValue, realm: BidiRealm) {
     super();
-    this.#sandbox = sandbox;
-    this.#remoteValue = remoteValue;
-  }
-
-  context(): BidiRealm {
-    return this.realm.environment.context();
-  }
-
-  override get realm(): Sandbox {
-    return this.#sandbox;
+    this.#value = value;
+    this.realm = realm;
   }
 
   override get disposed(): boolean {
@@ -56,16 +55,11 @@ export class BidiJSHandle<T = unknown> extends JSHandle<T> {
       return;
     }
     this.#disposed = true;
-    if ('handle' in this.#remoteValue) {
-      await releaseReference(
-        this.context(),
-        this.#remoteValue as Bidi.Script.RemoteReference
-      );
-    }
+    await this.realm.destroyHandles([this]);
   }
 
-  get isPrimitiveValue(): boolean {
-    switch (this.#remoteValue.type) {
+  get primitive(): boolean {
+    switch (this.#value.type) {
       case 'string':
       case 'number':
       case 'bigint':
@@ -80,19 +74,19 @@ export class BidiJSHandle<T = unknown> extends JSHandle<T> {
   }
 
   override toString(): string {
-    if (this.isPrimitiveValue) {
-      return 'JSHandle:' + BidiDeserializer.deserialize(this.#remoteValue);
+    if (this.primitive) {
+      return 'JSHandle:' + BidiDeserializer.deserializeLocalValue(this.#value);
     }
 
-    return 'JSHandle@' + this.#remoteValue.type;
+    return 'JSHandle@' + this.#value.type;
   }
 
   override get id(): string | undefined {
-    return 'handle' in this.#remoteValue ? this.#remoteValue.handle : undefined;
+    return 'handle' in this.#value ? this.#value.handle : undefined;
   }
 
-  remoteValue(): Bidi.Script.RemoteValue {
-    return this.#remoteValue;
+  get remoteValue(): Bidi.Script.RemoteValue {
+    return this.#value;
   }
 
   override remoteObject(): never {

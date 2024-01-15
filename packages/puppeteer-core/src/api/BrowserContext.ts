@@ -114,10 +114,14 @@ export abstract class BrowserContext extends EventEmitter<BrowserContextEvents> 
    * );
    * ```
    */
-  abstract waitForTarget(
+  async waitForTarget(
     predicate: (x: Target) => boolean | Promise<boolean>,
-    options?: WaitForTargetOptions
-  ): Promise<Target>;
+    options: WaitForTargetOptions = {}
+  ): Promise<Target> {
+    return await this.browser().waitForTarget(target => {
+      return target.browserContext() === this && predicate(target);
+    }, options);
+  }
 
   /**
    * Gets a list of all open {@link Page | pages} inside this

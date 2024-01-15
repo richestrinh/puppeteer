@@ -6,12 +6,7 @@
 
 import type * as Bidi from 'chromium-bidi/lib/cjs/protocol/protocol.js';
 
-import {LazyArg} from '../common/LazyArg.js';
 import {isDate, isPlainObject, isRegExp} from '../common/util.js';
-
-import {BidiElementHandle} from './ElementHandle.js';
-import {BidiJSHandle} from './JSHandle.js';
-import type {Sandbox} from './Sandbox.js';
 
 /**
  * @internal
@@ -130,35 +125,5 @@ export class BidiSerializer {
           value: arg,
         };
     }
-  }
-
-  static async serialize(
-    sandbox: Sandbox,
-    arg: unknown
-  ): Promise<Bidi.Script.LocalValue> {
-    if (arg instanceof LazyArg) {
-      arg = await arg.get(sandbox.realm);
-    }
-    // eslint-disable-next-line rulesdir/use-using -- We want this to continue living.
-    const objectHandle =
-      arg && (arg instanceof BidiJSHandle || arg instanceof BidiElementHandle)
-        ? arg
-        : null;
-    if (objectHandle) {
-      if (
-        objectHandle.realm.environment.context() !==
-        sandbox.environment.context()
-      ) {
-        throw new Error(
-          'JSHandles can be evaluated only in the context they were created!'
-        );
-      }
-      if (objectHandle.disposed) {
-        throw new Error('JSHandle is disposed!');
-      }
-      return objectHandle.remoteValue() as Bidi.Script.RemoteReference;
-    }
-
-    return BidiSerializer.serializeRemoteValue(arg);
   }
 }

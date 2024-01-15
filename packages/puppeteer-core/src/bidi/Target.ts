@@ -11,114 +11,87 @@ import {UnsupportedOperation} from '../common/Errors.js';
 
 import type {BidiBrowser} from './Browser.js';
 import type {BidiBrowserContext} from './BrowserContext.js';
-import {type BrowsingContext, CdpSessionWrapper} from './BrowsingContext.js';
+import type {BrowsingContext} from './core/BrowsingContext.js';
 import {BidiPage} from './Page.js';
 
 /**
  * @internal
  */
-export abstract class BidiTarget extends Target {
-  protected _browserContext: BidiBrowserContext;
+export const targets = new WeakMap<object, Target>();
 
-  constructor(browserContext: BidiBrowserContext) {
+/**
+ * @internal
+ */
+
+export class BidiBrowserTarget extends Target {
+  readonly #browser: BidiBrowser;
+
+  constructor(browser: BidiBrowser) {
     super();
-    this._browserContext = browserContext;
-  }
+    targets.set(browser, this);
 
-  _setBrowserContext(browserContext: BidiBrowserContext): void {
-    this._browserContext = browserContext;
+    this.#browser = browser;
   }
 
   override asPage(): Promise<Page> {
     throw new UnsupportedOperation();
   }
-
-  override browser(): BidiBrowser {
-    return this._browserContext.browser();
-  }
-
-  override browserContext(): BidiBrowserContext {
-    return this._browserContext;
-  }
-
-  override opener(): never {
-    throw new UnsupportedOperation();
-  }
-
-  override createCDPSession(): Promise<CDPSession> {
-    throw new UnsupportedOperation();
-  }
-}
-
-/**
- * @internal
- */
-export class BiDiBrowserTarget extends BidiTarget {
   override url(): string {
     return '';
   }
-
+  override createCDPSession(): Promise<CDPSession> {
+    throw new UnsupportedOperation();
+  }
   override type(): TargetType {
     return TargetType.BROWSER;
   }
+  override browser(): BidiBrowser {
+    return this.#browser;
+  }
+  override browserContext(): BidiBrowserContext {
+    return this.#browser.defaultBrowserContext();
+  }
+  override opener(): Target | undefined {
+    return undefined;
+  }
 }
 
 /**
  * @internal
  */
-export class BiDiBrowsingContextTarget extends BidiTarget {
-  protected _browsingContext: BrowsingContext;
 
-  constructor(
-    browserContext: BidiBrowserContext,
-    browsingContext: BrowsingContext
-  ) {
-    super(browserContext);
+export class BidiPageTarget extends Target {
+  readonly #browserContext: BidiBrowserContext;
+  readonly #page: BidiPage;
 
-    this._browsingContext = browsingContext;
+  constructor(browsingContext: BrowsingContext, context: BidiBrowserContext) {
+    super();
+    this.#browserContext = context;
+    this.#page = BidiPage.create(browsingContext, this);
   }
 
+  override async page(): Promise<Page | null> {
+    return this.#page;
+  }
+  override async asPage(): Promise<BidiPage> {
+    return this.#page;
+  }
   override url(): string {
-    return this._browsingContext.url;
+    return this.#page.url();
   }
-
   override async createCDPSession(): Promise<CDPSession> {
-    const {sessionId} = await this._browsingContext.cdpSession.send(
-      'Target.attachToTarget',
-      {
-        targetId: this._browsingContext.id,
-        flatten: true,
-      }
-    );
-    return new CdpSessionWrapper(this._browsingContext, sessionId);
+    return await this.#page.createCDPSession();
   }
-
   override type(): TargetType {
     return TargetType.PAGE;
   }
-}
-
-/**
- * @internal
- */
-export class BiDiPageTarget extends BiDiBrowsingContextTarget {
-  #page: BidiPage;
-
-  constructor(
-    browserContext: BidiBrowserContext,
-    browsingContext: BrowsingContext
-  ) {
-    super(browserContext, browsingContext);
-
-    this.#page = new BidiPage(browsingContext, browserContext, this);
+  override browser(): BidiBrowser {
+    return this.#browserContext.browser();
   }
-
-  override async page(): Promise<BidiPage> {
-    return this.#page;
+  override browserContext(): BidiBrowserContext {
+    return this.#browserContext;
   }
-
-  override _setBrowserContext(browserContext: BidiBrowserContext): void {
-    super._setBrowserContext(browserContext);
-    this.#page._setBrowserContext(browserContext);
+  override opener(): Target | undefined {
+    return undefined;
   }
 }

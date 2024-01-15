@@ -12,7 +12,7 @@ import {assert} from '../util/assert.js';
 import {Deferred} from '../util/Deferred.js';
 import {interpolateFunction, stringifyFunction} from '../util/Function.js';
 
-import type {BidiConnection} from './Connection.js';
+import type {Connection} from './core/Connection.js';
 import {BidiDeserializer} from './Deserializer.js';
 import type {BidiFrame} from './Frame.js';
 import {BidiSerializer} from './Serializer.js';
@@ -137,7 +137,10 @@ export class ExposeableFunction<Args extends unknown[], Ret> {
     const args = remoteValue.value?.[1];
     assert(args);
     try {
-      const result = await this.#apply(...BidiDeserializer.deserialize(args));
+      const result = await this.#apply(
+        // SAFETY: We try-catch this.
+        ...(BidiDeserializer.deserializeLocalValue(args) as Args)
+      );
       await connection.send('script.callFunction', {
         functionDeclaration: stringifyFunction(([_, resolve]: any, result) => {
           resolve(result);
@@ -207,8 +210,8 @@ export class ExposeableFunction<Args extends unknown[], Ret> {
     }
   };
 
-  get #connection(): BidiConnection {
-    return this.#frame.context().connection;
+  get #connection(): Connection {
+    return this.#frame.page().browser().session.connection;
   }
 
   get #channelArguments() {
